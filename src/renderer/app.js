@@ -1221,11 +1221,24 @@ const EQ_PRESETS = {
   'Treble Booster': [0, 0, 0, 1, 3, 5], 'Treble Reducer': [0, 0, 0, -1, -3, -5], 'Vocal Booster': [-1, 0, 3, 5, 3, 0],
 };
 
+async function refreshDiscordStatus() {
+  const el = $('#discord-status');
+  if (!el) return;
+  const s = await K.discordStatus();
+  const dc = state.settings.discord || {};
+  el.textContent = !dc.enabled ? 'Off'
+    : !/^\d{15,22}$/.test(dc.clientId || '') ? 'Enter your Discord application ID to connect.'
+    : s.connected ? 'Connected to Discord.'
+    : s.error ? `Discord refused the connection: ${s.error}. Check the application ID.`
+    : 'Waiting for Discord… make sure the Discord desktop app is running.';
+}
+
 async function openSettings(tab = 'general') {
   const s = (state.settings = await K.getSettings());
   const langs = [['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['pt', 'Português'], ['nl', 'Nederlands'], ['pl', 'Polski'], ['sv', 'Svenska'], ['tr', 'Türkçe'], ['ru', 'Русский'], ['uk', 'Українська'], ['ar', 'العربية'], ['id', 'Bahasa Indonesia'], ['ja', '日本語'], ['ko', '한국어'], ['zh-CN', '简体中文'], ['zh-TW', '繁體中文']];
   const sw = (key, on) => `<label class="switch"><input type="checkbox" data-set="${key}" ${on ? 'checked' : ''}><span></span></label>`;
   const eq = s.eq || { enabled: false, preset: 'Flat', gains: EQ_PRESETS.Flat.slice() };
+  const dc = { ...(s.discord || {}) };
   const pages = {
     general: `
       <div class="setting"><div><div class="lbl">Account</div><div class="hint">${state.signedIn ? esc(state.account?.name || 'Signed in') + (state.account?.handle ? ' · ' + esc(state.account.handle) : '') : 'Sign in with Google to use your library and YouTube Music Premium.'}</div></div>
@@ -1245,6 +1258,15 @@ async function openSettings(tab = 'general') {
       <div class="setting"><div><div class="lbl">Equalizer</div><div class="hint">6-band parametric EQ applied to Kaset's playback.</div></div>${sw('eqEnabled', eq.enabled)}</div>
       <div class="setting"><div class="lbl">Preset</div><select id="eq-preset">${Object.keys(EQ_PRESETS).concat(eq.preset === 'Custom' ? ['Custom'] : []).map((p) => `<option ${p === eq.preset ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
       <div class="eq">${EQ_BANDS.map((f, i) => `<div class="band"><span class="db" id="eq-db-${i}">${eq.gains[i] > 0 ? '+' : ''}${eq.gains[i]}</span><input type="range" min="-12" max="12" step="1" value="${eq.gains[i]}" data-band="${i}"><span>${f >= 1000 ? f / 1000 + 'k' : f}</span></div>`).join('')}</div>`,
+    discord: `
+      <div class="setting"><div><div class="lbl">Discord Rich Presence</div><div class="hint">Show what you're playing on your Discord profile, with the current lyric line. Needs the Discord desktop app, with Settings → Activity Privacy → “Share your detected activities” on.</div></div>${sw('discord.enabled', dc.enabled)}</div>
+      <div class="setting"><div><div class="lbl">Application ID</div><div class="hint">Create an application at discord.com/developers. Its name is what appears after “Listening to”.</div></div>
+        <div style="display:flex;gap:8px"><input class="field" data-set="discord.clientId" value="${esc(dc.clientId || '')}" placeholder="e.g. 1234567890123456789" spellcheck="false" style="width:210px"><button class="btn" data-action="discord-portal">Open Portal</button></div></div>
+      <div class="setting"><div><div class="lbl">Show lyrics</div><div class="hint">Synced lyric lines from LRCLIB, or NetEase Cloud Music when LRCLIB has none (NetEase receives the title and artist). Discord allows about 5 updates per 20 seconds, so fast songs show a few lines at once.</div></div>${sw('discord.lyrics', dc.lyrics !== false)}</div>
+      <div class="setting"><div><div class="lbl">Hide when paused</div><div class="hint">Otherwise your profile shows the track as “Paused”.</div></div>${sw('discord.clearOnPause', dc.clearOnPause !== false)}</div>
+      <div class="setting"><div><div class="lbl">Status shows</div><div class="hint">What follows “Listening to” in your member-list status.</div></div>
+        <select data-set="discord.statusDisplay">${[['name', 'App name'], ['artist', 'Artist'], ['title', 'Song title']].map(([v, n]) => `<option value="${v}" ${(dc.statusDisplay || 'name') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="setting"><div><div class="lbl">Status</div><div class="hint" id="discord-status">Checking…</div></div></div>`,
     shortcuts: `<table class="kbd-table">
         <tr><td>Play / Pause</td><td><kbd>Space</kbd></td></tr>
         <tr><td>Next / Previous track</td><td><kbd>Ctrl</kbd> <kbd>→</kbd> / <kbd>Ctrl</kbd> <kbd>←</kbd></td></tr>
@@ -1266,16 +1288,22 @@ async function openSettings(tab = 'general') {
       <div class="setting"><div><div class="lbl">Source code</div><div class="hint">github.com/sozercan/kaset · MIT License</div></div><button class="btn" data-action="open-repo">Open</button></div>
       <div class="hint" style="margin-top:12px;color:var(--text-3);font-size:12px">Kaset is an unofficial application and is not affiliated with YouTube or Google Inc. “YouTube”, “YouTube Music” and the “YouTube Logo” are registered trademarks of Google Inc.</div>`,
   };
-  const names = { general: 'General', playback: 'Playback', eq: 'Equalizer', shortcuts: 'Shortcuts', about: 'About' };
+  const names = { general: 'General', playback: 'Playback', eq: 'Equalizer', discord: 'Discord', shortcuts: 'Shortcuts', about: 'About' };
   const m = modal(`<h2>Settings</h2><div class="settings-tabs">${Object.keys(pages).map((k) => `<button data-stab="${k}" class="${k === tab ? 'on' : ''}">${names[k]}</button>`).join('')}</div><div id="settings-body">${pages[tab]}</div>
     <div class="foot"><span>Kaset for Windows</span><button class="btn" data-x>Done</button></div>`, { wide: true });
   m.querySelector('[data-x]').onclick = closeModal;
   m.querySelectorAll('[data-stab]').forEach((b) => (b.onclick = () => openSettings(b.dataset.stab)));
+  if (tab === 'discord') refreshDiscordStatus();
   const saveEq = async (next) => { Object.assign(eq, next); state.settings = await K.setSettings({ eq }); K.player('eq', eq); };
   m.querySelectorAll('[data-set]').forEach((el) => el.addEventListener('change', async () => {
     const key = el.dataset.set;
     const v = el.type === 'checkbox' ? el.checked : el.value;
     if (key === 'eqEnabled') return saveEq({ enabled: v });
+    if (key.startsWith('discord.')) {
+      dc[key.slice(8)] = key === 'discord.clientId' ? String(v).trim() : v;
+      state.settings = await K.setSettings({ discord: dc });
+      return setTimeout(refreshDiscordStatus, 1500);
+    }
     state.settings = await K.setSettings({ [key]: v });
     if (key === 'language') { pageCache.clear(); render(); loadSidebarPlaylists(); }
     if (key === 'appearance') applyTheme();
@@ -1334,6 +1362,7 @@ function setupDelegation() {
       if (a === 'account') { e.stopPropagation(); return accountMenu(act); }
       if (a === 'check-updates') { $('#upd-status').textContent = 'Checking…'; return K.checkUpdates().then((r) => { const el = $('#upd-status'); if (el) el.textContent = r; }); }
       if (a === 'open-repo') return K.openExternal('https://github.com/sozercan/kaset');
+      if (a === 'discord-portal') return K.openExternal('https://discord.com/developers/applications');
     }
     const lt = t.closest('[data-libtab]');
     if (lt) { store.set('libraryTab', lt.dataset.libtab); return navigate({ name: 'library', tab: lt.dataset.libtab }, true); }

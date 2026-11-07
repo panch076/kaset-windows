@@ -40,6 +40,7 @@ Like and dislike songs. Add albums and playlists to your library. Create playlis
 - Jump list tasks: Play/Pause, Next, Previous, Mini Player
 - A notification-area icon with playback controls; music keeps playing when the window is closed (optional)
 - Track notifications with artwork (optional), and launch at sign-in (optional)
+- Discord Rich Presence with synced lyrics (Settings → Discord; needs your own Discord application ID), ported from [kaset-discord-rpc](https://github.com/panch076/kaset-discord-rpc): "Listening to" with title, artist, artwork, progress, the current lyric line (LRCLIB, falling back to NetEase), and a YouTube Music button; "Watching" for YouTube videos
 - The `kaset://` URL scheme (`kaset://play?v=VIDEO_ID`), the same as Kaset for macOS
 - Light, dark or system appearance
 - Automatic updates from GitHub Releases

@@ -8,6 +8,7 @@ const innertube = require('./innertube');
 const ytInnertube = require('./youtube-innertube');
 const P = require('./parse');
 const YP = require('./parse-youtube');
+const { Presence, bigArtwork } = require('./discord');
 
 const PARTITION = 'persist:kaset';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -38,6 +39,7 @@ const DEFAULTS = {
   closeToTray: true, notifications: false, volume: 80, language: 'en', appearance: 'system', launchAtLogin: false,
   autoplay: true, resumeOnLaunch: true, smartShuffleEvery: 3, smartShuffleAhead: 3,
   eq: { enabled: false, preset: 'Flat', gains: [0, 0, 0, 0, 0, 0] },
+  discord: { enabled: false, clientId: '', lyrics: true, clearOnPause: true, statusDisplay: 'name' },
   windowBounds: null, miniBounds: null, lastQueue: null,
 };
 let settings = { ...DEFAULTS };
@@ -62,6 +64,7 @@ let quitting = false;
 let ses = null;
 let nowPlaying = null;
 let isPlaying = false;
+let presence = null; // Discord Rich Presence (src/main/discord.js)
 const sourcePlaying = { music: false, youtube: false };
 let rendererReady = false;
 const pendingUrls = [];
@@ -827,6 +830,7 @@ function registerIpc() {
       case 'pause': return ytExec('window.__kaset.pause()');
       case 'stop':
         ytCurrent = null;
+        if (presence) presence.clearSource('youtube');
         showYtWindow(false);
         return ytExec('window.__kaset.stop()');
       case 'seek': return ytExec(`window.__kaset.seek(${Number(arg) || 0})`);
@@ -856,6 +860,10 @@ function registerIpc() {
     if (msg.type === 'state') {
       const playing = !!(msg.ready && !msg.paused && ytCurrent);
       setPlaying('youtube', playing);
+      if (presence && ytCurrent && msg.ready && !msg.ad && msg.videoId === ytCurrent.videoId) {
+        presence.receive({ source: 'youtube', title: ytCurrent.title || msg.title, artist: ytCurrent.channel || msg.author, videoId: ytCurrent.videoId,
+          playing: !msg.paused, position: msg.time, duration: msg.duration });
+      }
       if (mainWin && playing && msg.duration > 0 && !msg.ad) mainWin.setProgressBar(Math.min(1, msg.time / msg.duration));
     }
     send('yt:event', msg);
@@ -870,6 +878,10 @@ function registerIpc() {
     if (msg.type === 'state') {
       const playing = msg.ready && !msg.paused;
       setPlaying('music', playing);
+      if (presence && nowPlaying && msg.ready && !msg.ad && msg.videoId === nowPlaying.videoId) {
+        presence.receive({ source: 'music', title: nowPlaying.title, artist: nowPlaying.artist, album: nowPlaying.album, artwork: bigArtwork(nowPlaying.thumb),
+          videoId: nowPlaying.videoId, playing: !msg.paused, position: msg.time, duration: msg.duration });
+      }
       if (mainWin && msg.duration > 0 && !msg.ad && !sourcePlaying.youtube) {
         mainWin.setProgressBar(Math.min(1, msg.time / msg.duration), { mode: playing ? 'normal' : 'paused' });
       }
@@ -909,7 +921,9 @@ function registerIpc() {
   ipcMain.handle('app:checkUpdates', () => checkUpdatesNow());
   ipcMain.handle('auth:login', () => openLogin());
   ipcMain.handle('auth:logout', () => signOut());
+  ipcMain.handle('discord:status', () => (presence ? presence.status() : { connected: false, enabled: false }));
   ipcMain.handle('open:external', (_e, url) => {
+    if (url === 'https://discord.com/developers/applications') return shell.openExternal(url);
     if (/^https:\/\/((music|www)\.)?youtube\.com\//.test(url) || /^https:\/\/github\.com\//.test(url)) shell.openExternal(url);
   });
 }
@@ -934,6 +948,7 @@ app.whenReady().then(async () => {
   });
   ses.setPermissionRequestHandler((_wc, perm, cb) => cb(['media', 'mediaKeySystem', 'fullscreen'].includes(perm)));
 
+  presence = new Presence(() => settings.discord);
   registerIpc();
   createPlayerWindow();
   createMainWindow({ hidden: process.argv.includes('--hidden') });
@@ -945,7 +960,7 @@ app.whenReady().then(async () => {
   handleArgv(process.argv.slice(1));
 });
 
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; if (presence) presence.shutdown(); });
 app.on('window-all-closed', () => {
   if (!settings.closeToTray) app.quit();
 });

@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('kaset', {
   login: () => ipcRenderer.invoke('auth:login'),
   logout: () => ipcRenderer.invoke('auth:logout'),
   openExternal: (url) => ipcRenderer.invoke('open:external', url),
+  discordStatus: () => ipcRenderer.invoke('discord:status'),
   onPlayerEvent: on('player:event'),
   onCommand: on('command'),
   onMeta: on('meta'),
