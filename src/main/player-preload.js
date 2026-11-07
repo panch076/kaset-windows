@@ -29,6 +29,7 @@ const PAGE_SCRIPT = `(() => {
 
   let expected = null;       // videoId we asked to play
   let endedFor = null;       // videoId we already reported 'ended' for
+  let seenExpected = null;   // videoId the player has actually been on since we asked for it
   let wantPlaying = false;
 
   const player = () => document.getElementById('movie_player');
@@ -159,8 +160,19 @@ const PAGE_SCRIPT = `(() => {
       volume: p.getVolume ? p.getVolume() : 100,
     };
     post(msg);
+    if (expected && data.video_id === expected) seenExpected = expected;
     if (!ad && expected && data.video_id === expected && state === 0 && endedFor !== expected) {
       endedFor = expected;
+      post({ type: 'ended', videoId: expected });
+    }
+    // The page moved on by itself (YouTube Music's own autoplay can jump straight
+    // to its next pick, sometimes via an ad, without an observable "ended" state).
+    // Our track was playing and now a video we didn't ask for is loaded: that means
+    // our track finished. Report it so Kaset advances its own queue (which updates
+    // the title, artwork and Windows media info), and stop the stray video.
+    if (!ad && expected && seenExpected === expected && data.video_id && data.video_id !== expected && endedFor !== expected) {
+      endedFor = expected;
+      p.pauseVideo && p.pauseVideo();
       post({ type: 'ended', videoId: expected });
     }
     // YouTube Music sometimes queues its own autoplay; keep playback on our track.
