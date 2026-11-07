@@ -786,7 +786,7 @@ function setupPlayerBar() {
   $('#np-art').onclick = openNowPlaying;
   $('#np-title').onclick = () => { const c = player.current(); if (c?.album?.id) navigate({ name: 'browse', browseId: c.album.id }); else openNowPlaying(); };
 
-  const lane = $('.track-lane');
+  const lane = $('#progress .track-lane'); // the music bar's lane, not the YouTube bar's #yt-lane
   const frac = (e) => { const r = lane.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); };
   const show = (f) => { $('#lane-fill').style.width = f * 100 + '%'; $('#lane-knob').style.left = f * 100 + '%'; };
   lane.addEventListener('pointerdown', (e) => {
@@ -829,12 +829,12 @@ function setupPlayerBar() {
       $('#nowplaying').classList.toggle('paused', player.paused);
       $('#playpause').title = player.paused ? 'Play (Space)' : 'Pause (Space)';
       $('#playpause').classList.toggle('loading', player.loading);
-      $('.track-lane').classList.toggle('loading', player.loading && !player.ad);
+      $('#progress .track-lane').classList.toggle('loading', player.loading && !player.ad);
       if (player.ad) $('#np-artist').innerHTML = '<span class="ad">Ad</span> · Your music will continue shortly';
       else if (cur) $('#np-artist').innerHTML = subtitleHtml(cur);
     }
     if (what === 'time' || what === 'track') {
-      if (!$('.track-lane').classList.contains('drag')) {
+      if (!$('#progress .track-lane').classList.contains('drag')) {
         const f = player.duration ? player.position / player.duration : 0;
         $('#lane-fill').style.width = f * 100 + '%';
         $('#lane-knob').style.left = f * 100 + '%';
