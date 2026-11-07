@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>Kaset Mini Player</title>
+  <style>
+    :root { --accent: #ff0056; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; color: #fff; user-select: none; }
+    svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    svg.fill { fill: currentColor; stroke: none; }
+    button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-app-region: no-drag; }
+    #root { position: fixed; inset: 0; -webkit-app-region: drag; overflow: hidden; background: #1c1c1f; }
+    #art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .5s cubic-bezier(.2,.8,.2,1), filter .4s; }
+    #root:hover #art { filter: brightness(.7) saturate(1.1); }
+    .empty #art { opacity: 0; }
+    .shade { position: absolute; inset: auto 0 0 0; height: 60%; background: linear-gradient(to bottom, transparent, rgba(0,0,0,.65)); pointer-events: none; }
+    .top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; opacity: 0; transition: opacity .2s; }
+    #root:hover .top { opacity: 1; }
+    .chip { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.16); backdrop-filter: blur(18px) saturate(1.8); border: 1px solid rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
+    .chip:hover { background: rgba(255,255,255,.28); }
+    .chip svg { width: 15px; height: 15px; }
+    .meta { position: absolute; left: 16px; right: 16px; bottom: 76px; text-shadow: 0 1px 8px rgba(0,0,0,.5); transition: transform .25s; }
+    #title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #artist { font-size: 13px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .glass { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 54px; border-radius: 27px; display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: rgba(40,40,46,.42); backdrop-filter: blur(24px) saturate(1.9); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.22); }
+    .glass button { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; transition: background .15s, transform .15s; }
+    .glass button:hover { background: rgba(255,255,255,.14); }
+    .glass button:active { transform: scale(.9); }
+    .glass .pp svg { width: 26px; height: 26px; }
+    .glass .sm { color: rgba(255,255,255,.75); }
+    .glass .sm svg { width: 17px; height: 17px; }
+    .glass .on { color: var(--accent); }
+    .glass .on svg { fill: var(--accent); }
+    .progress { position: absolute; left: 24px; right: 24px; bottom: 13px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.22); overflow: hidden; -webkit-app-region: no-drag; cursor: pointer; }
+    #bar { height: 100%; width: 0; background: rgba(255,255,255,.9); }
+    .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.5); font-size: 13px; }
+    .placeholder img { width: 64px; display: block; margin: 0 auto 10px; opacity: .85; }
+  </style>
+</head>
+<body>
+  <div id="root" class="empty">
+    <img id="art" alt="" />
+    <div class="placeholder" id="placeholder"><div><img src="../../build/icon.png" alt="" />Nothing playing</div></div>
+    <div class="shade"></div>
+    <div class="top">
+      <button class="chip" id="close" title="Close Mini Player"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+      <button class="chip" id="expand" title="Open Kaset"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
+    </div>
+    <div class="meta"><div id="title"></div><div id="artist"></div></div>
+    <div class="glass">
+      <button class="sm" id="like" title="Like"><svg viewBox="0 0 24 24"><path d="M7.5 20h-3v-9h3zM7.5 11.5l4-7.5a2 2 0 0 1 2 2.3l-.7 3.7H18a2 2 0 0 1 2 2.3l-1.2 5.5a2 2 0 0 1-2 1.6H7.5"/></svg></button>
+      <button id="prev" title="Previous"><svg viewBox="0 0 24 24" class="fill"><path d="M11.5 6.2v11.6L3 12zM21 6.2v11.6L12.5 12z"/></svg></button>
+      <button class="pp" id="pp" title="Play/Pause"><svg viewBox="0 0 24 24" class="fill"><path id="pp-path" d="M7 4.5v15l12.5-7.5z"/></svg></button>
+      <button id="next" title="Next"><svg viewBox="0 0 24 24" class="fill"><path d="M12.5 6.2v11.6L21 12zM3 6.2v11.6L11.5 12z"/></svg></button>
+      <button class="sm" id="np" title="Now Playing"><svg viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7M15.5 14v6.5l5-3.25z"/></svg></button>
+      <div class="progress" id="progress"><div id="bar"></div></div>
+    </div>
+  </div>
+  <script src="mini.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "name": "kaset-windows",
+  "productName": "Kaset",
+  "version": "1.0.0",
+  "description": "A Windows client for YouTube Music and YouTube — Kaset for Windows",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/parse.test.js && node test/parse-youtube.test.js",
+    "dist": "electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.sertacozercan.kaset.windows",
+    "productName": "Kaset",
+    "copyright": "Copyright © 2025 sozercan. MIT License.",
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "build/tray.png",
+      "LICENSE"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "protocols": [
+      {
+        "name": "Kaset",
+        "schemes": [
+          "kaset"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Kaset-${version}-${arch}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Kaset-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kaset",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sozercan",
+        "repo": "kaset",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "author": {
+    "name": "Sertac Ozercan and contributors"
+  },
+  "homepage": "https://github.com/sozercan/kaset"
+}
