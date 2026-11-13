@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#141416" />
+  <meta name="color-scheme" content="dark" />
+  <title>Kaset Party</title>
+  <link rel="icon" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="stylesheet" href="/guest.css" />
+</head>
+<body>
+  <div class="backdrop" id="backdrop"></div>
+  <main id="app">
+    <header class="top">
+      <div class="brand"><img src="/icon.png" alt="" /><div><div class="t">Kaset Party</div><div class="s" id="host-line">Add songs to the queue</div></div></div>
+      <button class="me" id="me-btn" title="Change your name"><span id="me-initial">?</span></button>
+    </header>
+
+    <section class="now glass" id="now">
+      <img id="now-art" alt="" />
+      <div class="now-text">
+        <div class="label" id="now-label">Now Playing</div>
+        <div class="title" id="now-title">Nothing playing yet</div>
+        <div class="artist" id="now-artist">Search below to request the first song</div>
+        <div class="bar"><div id="now-bar"></div></div>
+      </div>
+    </section>
+
+    <section class="search">
+      <div class="search-box glass">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input id="q" type="search" placeholder="Search for a song or artist" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />
+        <button id="clear" class="clear hidden" aria-label="Clear">✕</button>
+      </div>
+      <div id="suggest" class="chips"></div>
+      <div id="results" class="list"></div>
+    </section>
+
+    <section class="queue">
+      <div class="head"><h2>Up Next</h2><span id="queue-count"></span></div>
+      <div id="queue" class="list"></div>
+    </section>
+
+    <footer class="foot">Songs you request go into the host's queue in Kaset. Not affiliated with YouTube or Google.</footer>
+  </main>
+
+  <div id="name-sheet" class="sheet hidden">
+    <div class="sheet-card glass">
+      <img src="/icon.png" alt="" class="sheet-icon" />
+      <h3>Join the party</h3>
+      <p>Your name is shown next to the songs you request.</p>
+      <input id="name-input" maxlength="24" placeholder="Your name" autocomplete="nickname" enterkeyhint="done" />
+      <button id="name-save" class="primary">Let's go</button>
+    </div>
+  </div>
+
+  <div id="expired" class="sheet hidden">
+    <div class="sheet-card glass">
+      <img src="/icon.png" alt="" class="sheet-icon" />
+      <h3>This link doesn't work anymore</h3>
+      <p id="expired-msg">Ask the host to show you the new QR code.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/guest.js"></script>
+</body>
+</html>

@@ -45,6 +45,21 @@ Like and dislike songs. Add albums and playlists to your library. Create playlis
 - Light, dark or system appearance
 - Automatic updates from GitHub Releases
 
+### Listening Party
+Let people on your Wi-Fi add songs to your queue from their phone or computer. No app or account is needed on their side.
+
+1. Open **Settings → Party** and turn on **Listening Party**. The first time, Windows may ask to allow Kaset through the firewall; allow it on private networks.
+2. Guests scan the QR code, or open the link shown, on any device on the same network.
+3. They pick a name, search YouTube Music, and tap **Add**. Their songs go into Up Next after the current song, in the order requested, with their name beside them.
+
+Guests also see what's playing and what's up next, updated live. As host you can:
+
+- **Approve requests first**: requests wait at the top of Up Next until you accept or decline them.
+- **Limit songs per guest**: how many songs one guest can have waiting at once (default 3).
+- **Make a new link**: the old link and QR code stop working immediately.
+
+Guests can only search and request songs. They can't skip, pause, remove songs or see your account. The page is served only to devices on your local network, only while the party is switched on, and only to people with the link.
+
 ### Keyboard shortcuts
 
 | Action | Keys |
@@ -98,6 +113,8 @@ src/main/youtube-innertube.js  the same transport for regular YouTube (WEB clien
 src/main/parse.js           response parsers (shelves, items, headers, queues, lyrics)
 src/main/parse-youtube.js   YouTube mode parsers (feeds, search, channels, playlists, watch-next)
 src/main/player-preload.js  player controller for both playback windows, Media Session takeover, equalizer, video hover controls
+src/main/party.js            Listening Party web server (guest requests over the local network)
+src/party/                  the guest page served to phones and computers
 src/main/app-preload.js     the bridge between the UI and the main process
 src/renderer/               the UI (index.html/app.js/styles.css) and Mini Player (mini.html/mini.js)
 ```
@@ -109,6 +126,7 @@ npm install
 npm start                 # run Kaset
 npm test                  # live parser checks against public YouTube Music and YouTube endpoints
 npx electron test/smoke.js <outDir>   # end-to-end: plays music, drives every view incl. YouTube mode, saves screenshots
+npm run test:party        # end-to-end Listening Party check (starts the app, acts as guests)
 npm run dist              # build installers into dist/
 ```
 

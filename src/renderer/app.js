@@ -639,6 +639,16 @@ const player = (() => {
     emit('queue');
     toast(items.length === 1 ? `Added “${items[0].title}” to queue` : `Added ${items.length} songs to queue`);
   }
+  // Listening Party: a guest's song goes after the current song and after
+  // earlier requests, so requests play in order and ahead of autoplay filler.
+  function addRequest(item) {
+    if (!queue.length || !current()) return setQueue([item], 0);
+    let at = index + 1;
+    while (at < queue.length && queue[at].requestId) at++;
+    queue.splice(at, 0, item);
+    if (unshuffled) unshuffled.push(item);
+    emit('queue');
+  }
   function removeAt(i) { if (i === index) return; queue.splice(i, 1); if (i < index) index--; emit('queue'); }
   function move(from, to) {
     if (from === to) return;
@@ -749,7 +759,7 @@ const player = (() => {
 
   return {
     current, playSingle, playPlaylist, playList, next, previous, toggle, onEvent, seekTo, addNext, addEnd, removeAt, move, clearUpcoming,
-    cycleShuffle, cycleRepeat, rate, restore, loadIndex, pushMeta, emit,
+    cycleShuffle, cycleRepeat, rate, restore, loadIndex, pushMeta, emit, addRequest,
     on: (fn) => listeners.add(fn),
     get queue() { return queue; }, get index() { return index; }, get position() { return position; }, get duration() { return duration; },
     get paused() { return paused; }, get loading() { return !!loading && loading !== 'restored'; }, get shuffle() { return shuffleMode; }, get repeat() { return repeat; },
@@ -877,16 +887,119 @@ function togglePanel(which) {
 
 function queueHtml() {
   const q = player.queue;
-  if (!q.length || !q[player.index]) return '<div class="empty" style="padding:40px 10px">Nothing in the queue.<br>Play something to get started.</div>';
+  if (!q.length || !q[player.index]) return partyPendingHtml() + '<div class="empty" style="padding:40px 10px">Nothing in the queue.<br>Play something to get started.</div>';
   const row = (it, i) => `<div class="q-item ${i === player.index ? 'current' : i < player.index ? 'past' : ''}" draggable="${i !== player.index}" data-qi="${i}">
-      <img src="${esc(it.thumb || '')}" alt="" loading="lazy"><div style="min-width:0"><div class="tt">${esc(it.title)}${it.suggested ? '<span class="sugg" title="Smart Shuffle suggestion">✦</span>' : ''}</div><div class="ta">${esc(artistName(it))}</div></div>
+      <img src="${esc(it.thumb || '')}" alt="" loading="lazy"><div style="min-width:0"><div class="tt">${esc(it.title)}${it.suggested ? '<span class="sugg" title="Smart Shuffle suggestion">✦</span>' : ''}</div><div class="ta">${esc(artistName(it))}${it.requestedBy ? ` · <span class="req-by">${esc(it.requestedBy)}</span>` : ''}</div></div>
       ${i === player.index ? `<span class="ta">${esc(it.durationText || '')}</span>` : `<button class="icon-btn small rm" data-qrm="${i}" title="Remove">${ICON.x}</button>`}</div>`;
   const start = Math.max(0, player.index - 3);
   const past = q.slice(start, player.index).map((it, k) => row(it, start + k)).join('');
-  return `${past}<div class="q-head"><span>Now Playing</span></div>${row(q[player.index], player.index)}
+  return `${partyPendingHtml()}${past}<div class="q-head"><span>Now Playing</span></div>${row(q[player.index], player.index)}
     <div class="q-head"><span>Up Next${player.shuffle === 'smart' ? ' · Smart Shuffle' : ''}</span>${q.length > player.index + 1 ? '<button class="link-more" data-qclear>Clear</button>' : ''}</div>
     ${q.slice(player.index + 1).map((it, k) => row(it, player.index + 1 + k)).join('')}`;
 }
+// ---------------------------------------------------------------- Listening Party (host side)
+const partyState = { status: null, pending: [] };
+function partyPendingHtml() {
+  if (!partyState.pending.length) return '';
+  return `<div class="q-head"><span>Requests</span></div>${partyState.pending.map((r) => `<div class="q-item pending"><img src="${esc(r.song.thumb || '')}" alt=""><div style="min-width:0"><div class="tt">${esc(r.song.title)}</div><div class="ta">${esc(r.song.artist)} · <span class="req-by">${esc(r.requestedBy)}</span></div></div><span class="req-actions"><button class="icon-btn small ok" data-party-ok="${esc(r.requestId)}" title="Add to queue">${ICON.check}</button><button class="icon-btn small" data-party-no="${esc(r.requestId)}" title="Decline">${ICON.x}</button></span></div>`).join('')}`;
+}
+function refreshPartyUi() {
+  $('#btn-queue').classList.toggle('has-requests', partyState.pending.length > 0);
+  if (panel === 'queue') renderQueue();
+  if (fsOpen && fsTab === 'queue') renderFsRight();
+}
+function queuePartySong(r) {
+  player.addRequest({ ...r.song, requestedBy: r.requestedBy, requestId: r.requestId });
+}
+function onPartyRequest(r) {
+  if (r.status === 'pending') {
+    partyState.pending.push(r);
+    toast(`${r.requestedBy} requested “${r.song.title}” — approve it in Up Next`, 4000);
+  } else {
+    queuePartySong(r);
+    toast(`${r.requestedBy} added “${r.song.title}”`);
+  }
+  refreshPartyUi();
+}
+function resolvePartyRequest(requestId, approved) {
+  const i = partyState.pending.findIndex((r) => r.requestId === requestId);
+  if (i < 0) return;
+  const [r] = partyState.pending.splice(i, 1);
+  K.party('resolve', { requestId, approved });
+  if (approved) queuePartySong(r);
+  refreshPartyUi();
+}
+let partySnapTimer = null;
+function pushPartySnapshot() {
+  if (!partyState.status?.running) return;
+  clearTimeout(partySnapTimer);
+  partySnapTimer = setTimeout(() => {
+    const c = player.current();
+    const slim = (it) => ({ videoId: it.videoId, title: it.title, artist: artistName(it), requestedBy: it.requestedBy || null, requestId: it.requestId || null });
+    K.party('snapshot', {
+      hostName: (state.account?.name || '').split(' ')[0],
+      nowPlaying: c ? { ...slim(c), thumb: c.thumb, duration: player.duration, position: player.position, paused: player.paused } : null,
+      upNext: player.queue.slice(player.index + 1, player.index + 41).map(slim),
+    });
+  }, 250);
+}
+function setupParty() {
+  K.onPartyRequest(onPartyRequest);
+  K.onPartyStatus((s) => { const was = partyState.status?.running; partyState.status = s; if (s.running && !was) pushPartySnapshot(); updatePartySettings(); });
+  K.party('status').then((s) => { partyState.status = s; pushPartySnapshot(); });
+  let lastTimeSnap = 0;
+  player.on((what) => {
+    if (what === 'track' || what === 'queue' || what === 'state') pushPartySnapshot();
+    else if (what === 'time' && Date.now() - lastTimeSnap > 20000) { lastTimeSnap = Date.now(); pushPartySnapshot(); }
+  });
+}
+function partySettingsHtml() {
+  const st = partyState.status || { running: false, urls: [], settings: state.settings.party || {} };
+  const p = st.settings || {};
+  const u = st.urls?.[0];
+  const sw = (key, on) => `<label class="switch"><input type="checkbox" data-party="${key}" ${on ? 'checked' : ''}><span></span></label>`;
+  return `
+    <div class="setting"><div><div class="lbl">Listening Party</div><div class="hint">Let people on your Wi-Fi add songs to Up Next from their phone or computer. They can search for songs and request them, and nothing else.</div></div>${sw('enabled', p.enabled)}</div>
+    ${st.error ? `<div class="party-error">${esc(st.error)}</div>` : ''}
+    ${st.running && u ? `<div class="party-card"><img class="party-qr" src="${u.qr}" alt="QR code for the party link"><div class="party-info">
+        <div class="lbl">Scan to join</div><div class="hint">Or open this link on any device on the same Wi-Fi:</div>
+        <div class="party-url" id="party-url">${esc(u.url)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sm" data-party-act="copy">Copy Link</button><button class="btn sm" data-party-act="rotate" title="Stops the old link from working">New Link</button></div>
+        <div class="hint" style="margin-top:10px">${st.guests} guest${st.guests === 1 ? '' : 's'} connected${st.urls.length > 1 ? ` · also reachable at ${st.urls.slice(1).map((x) => esc(x.url.split('/')[2])).join(', ')}` : ''}</div>
+      </div></div>`
+    : st.running ? '<div class="party-error">Kaset couldn\'t find a Wi-Fi or Ethernet address. Connect to a network and try again.</div>' : ''}
+    <div class="setting"><div><div class="lbl">Approve requests first</div><div class="hint">Requests wait in Up Next until you accept them.</div></div>${sw('requireApproval', p.requireApproval)}</div>
+    <div class="setting"><div><div class="lbl">Songs per guest</div><div class="hint">How many songs one guest can have waiting at a time.</div></div><select data-party="maxPerGuest">${[[1, '1'], [2, '2'], [3, '3'], [5, '5'], [10, '10'], [0, 'No limit']].map(([v, n]) => `<option value="${v}" ${Number(p.maxPerGuest ?? 3) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+    <div class="setting"><div><div class="lbl">Port</div><div class="hint">Change this only if another app already uses it. The first time, Windows may ask to allow Kaset through the firewall. Allow it on private networks.</div></div><input class="field" data-party="port" value="${esc(p.port || 8338)}" inputmode="numeric" style="width:90px"></div>`;
+}
+function updatePartySettings() {
+  const box = $('#party-settings');
+  if (!box) return;
+  const a = document.activeElement;
+  if (box.contains(a) && a.tagName === 'INPUT' && a.type !== 'checkbox') return;
+  box.innerHTML = partySettingsHtml();
+}
+function wirePartySettings(root) {
+  root.addEventListener('change', async (e) => {
+    const el = e.target.closest('[data-party]');
+    if (!el) return;
+    const key = el.dataset.party;
+    const v = el.type === 'checkbox' ? el.checked : Number(el.value);
+    if (key === 'port' && !(v >= 1024 && v <= 65535)) { toast('Use a port between 1024 and 65535'); el.blur(); return updatePartySettings(); }
+    partyState.status = await K.party('set', { [key]: v });
+    state.settings = await K.getSettings();
+    if (document.activeElement === el) el.blur();
+    updatePartySettings();
+    pushPartySnapshot();
+  });
+  root.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-party-act]');
+    if (!b) return;
+    if (b.dataset.partyAct === 'copy') return copy($('#party-url').textContent, 'Party link copied');
+    if (b.dataset.partyAct === 'rotate') { partyState.status = await K.party('rotate'); updatePartySettings(); toast('New link created. The old one no longer works.'); }
+  });
+}
+
 function renderQueue() {
   const body = $('#panel-body');
   body.innerHTML = queueHtml();
@@ -900,6 +1013,9 @@ function setupQueueInteractions(body) {
   body.addEventListener('drop', (e) => { const el = e.target.closest('.q-item'); if (dragFrom == null || !el) return; e.preventDefault(); let to = Number(el.dataset.qi); if (to <= player.index) to = player.index + 1; if (dragFrom < to) to--; player.move(dragFrom, to); dragFrom = null; });
   body.addEventListener('dragend', () => { dragFrom = null; $$('.q-item.drag-over', body).forEach((x) => x.classList.remove('drag-over')); });
   body.addEventListener('click', (e) => {
+    const pr = e.target.closest('[data-party-ok], [data-party-no]');
+    if (pr) return resolvePartyRequest(pr.dataset.partyOk || pr.dataset.partyNo, !!pr.dataset.partyOk);
+    if (e.target.closest('.q-item.pending')) return;
     if (e.target.closest('[data-qclear]')) return player.clearUpcoming();
     const rm = e.target.closest('[data-qrm]');
     if (rm) return player.removeAt(Number(rm.dataset.qrm));
@@ -1160,6 +1276,7 @@ function openCommandBar() {
     { label: 'Now Playing', run: openNowPlaying },
     { label: 'Mini Player', k: 'Ctrl+Shift+M', run: () => K.player('mini', true) },
     { label: 'Equalizer', run: () => openSettings('eq') },
+    { label: 'Listening Party', run: () => openSettings('party') },
     { label: 'Go to Home', k: 'Ctrl+1', run: () => navigate({ name: 'home' }) },
     { label: 'Go to Explore', k: 'Ctrl+2', run: () => navigate({ name: 'explore' }) },
     { label: 'Go to Library', k: 'Ctrl+3', run: () => navigate({ name: 'library' }) },
@@ -1288,12 +1405,15 @@ async function openSettings(tab = 'general') {
       <div class="setting"><div><div class="lbl">Source code</div><div class="hint">github.com/sozercan/kaset · MIT License</div></div><button class="btn" data-action="open-repo">Open</button></div>
       <div class="hint" style="margin-top:12px;color:var(--text-3);font-size:12px">Kaset is an unofficial application and is not affiliated with YouTube or Google Inc. “YouTube”, “YouTube Music” and the “YouTube Logo” are registered trademarks of Google Inc.</div>`,
   };
-  const names = { general: 'General', playback: 'Playback', eq: 'Equalizer', discord: 'Discord', shortcuts: 'Shortcuts', about: 'About' };
-  const m = modal(`<h2>Settings</h2><div class="settings-tabs">${Object.keys(pages).map((k) => `<button data-stab="${k}" class="${k === tab ? 'on' : ''}">${names[k]}</button>`).join('')}</div><div id="settings-body">${pages[tab]}</div>
+  pages.party = '<div id="party-settings">' + partySettingsHtml() + '</div>';
+  const names = { general: 'General', playback: 'Playback', eq: 'Equalizer', party: 'Party', discord: 'Discord', shortcuts: 'Shortcuts', about: 'About' };
+  const order = ['general', 'playback', 'eq', 'party', 'discord', 'shortcuts', 'about'];
+  const m = modal(`<h2>Settings</h2><div class="settings-tabs">${order.map((k) => `<button data-stab="${k}" class="${k === tab ? 'on' : ''}">${names[k]}</button>`).join('')}</div><div id="settings-body">${pages[tab]}</div>
     <div class="foot"><span>Kaset for Windows</span><button class="btn" data-x>Done</button></div>`, { wide: true });
   m.querySelector('[data-x]').onclick = closeModal;
   m.querySelectorAll('[data-stab]').forEach((b) => (b.onclick = () => openSettings(b.dataset.stab)));
   if (tab === 'discord') refreshDiscordStatus();
+  if (tab === 'party') { wirePartySettings($('#party-settings')); K.party('status').then((st) => { partyState.status = st; updatePartySettings(); }); }
   const saveEq = async (next) => { Object.assign(eq, next); state.settings = await K.setSettings({ eq }); K.player('eq', eq); };
   m.querySelectorAll('[data-set]').forEach((el) => el.addEventListener('change', async () => {
     const key = el.dataset.set;
@@ -2384,6 +2504,7 @@ async function boot() {
   setupNowPlaying();
   setupYtPlayerBar();
   setupKeyboard();
+  setupParty();
   K.onPlayerEvent((m) => player.onEvent(m));
   K.onCommand((c) => (typeof c === 'string' ? handleCommand(c) : handleCommand(c.cmd, c)));
   K.onOpenUrl((u) => handleOpenUrl(u));

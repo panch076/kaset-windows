@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node test/parse.test.js && node test/parse-youtube.test.js",
-    "dist": "electron-builder --win --publish never"
+    "dist": "electron-builder --win --publish never",
+    "test:party": "electron test/party.js test-output/party"
   },
   "build": {
     "appId": "com.sertacozercan.kaset.windows",
@@ -79,7 +80,8 @@
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
-    "electron-updater": "^6.8.11"
+    "electron-updater": "^6.8.11",
+    "qrcode": "^1.5.4"
   },
   "author": {
     "name": "Sertac Ozercan and contributors"

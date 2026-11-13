@@ -604,3 +604,15 @@ body.yt-mode .music-only, body:not(.yt-mode) .yt-only { display: none !important
 #yt-dislike.on { color: var(--text); } #yt-dislike.on svg { fill: currentColor; }
 #yt-wl.on { color: var(--accent); }
 body.yt-mode .icon-btn.small:disabled { opacity: .3; }
+
+/* ---------- Listening Party ---------- */
+.req-by { color: var(--accent); font-weight: 600; }
+.q-item.pending { cursor: default; background: var(--accent-soft); margin-bottom: 4px; }
+.req-actions { display: flex; gap: 2px; }
+.req-actions .ok { color: #34c759; }
+#btn-queue.has-requests::after { content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.party-card { display: flex; gap: 20px; align-items: center; padding: 16px; margin: 6px 0 4px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); }
+.party-qr { width: 168px; height: 168px; border-radius: 12px; background: #fff; padding: 6px; flex: none; image-rendering: pixelated; }
+.party-info { min-width: 0; }
+.party-url { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; user-select: text; word-break: break-all; }
+.party-error { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 69, 58, .14); color: #ff6961; font-size: 13px; }

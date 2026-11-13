@@ -9,6 +9,7 @@ const ytInnertube = require('./youtube-innertube');
 const P = require('./parse');
 const YP = require('./parse-youtube');
 const { Presence, bigArtwork } = require('./discord');
+const { PartyServer } = require('./party');
 
 const PARTITION = 'persist:kaset';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -40,6 +41,7 @@ const DEFAULTS = {
   autoplay: true, resumeOnLaunch: true, smartShuffleEvery: 3, smartShuffleAhead: 3,
   eq: { enabled: false, preset: 'Flat', gains: [0, 0, 0, 0, 0, 0] },
   discord: { enabled: false, clientId: '', lyrics: true, clearOnPause: true, statusDisplay: 'name' },
+  party: { enabled: false, port: 8338, key: null, requireApproval: false, maxPerGuest: 3 },
   windowBounds: null, miniBounds: null, lastQueue: null,
 };
 let settings = { ...DEFAULTS };
@@ -64,6 +66,7 @@ let quitting = false;
 let ses = null;
 let nowPlaying = null;
 let isPlaying = false;
+let party = null; // Listening Party web server (src/main/party.js)
 let presence = null; // Discord Rich Presence (src/main/discord.js)
 const sourcePlaying = { music: false, youtube: false };
 let rendererReady = false;
@@ -755,8 +758,69 @@ const api = {
 };
 const yt = (endpoint, body) => ytInnertube.request(ses, endpoint, body, { hl: hl() });
 
+// ---------- Listening Party (guests add songs from their phones) ----------
+const SONGS_FILTER = 'EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D';
+const smallThumb = (u) => (u || '').replace(/=w\d+-h\d+[^&]*$/, '=w226-h226-l90-rj');
+const partySong = (it) => ({
+  kind: 'song', videoId: it.videoId, title: it.title, artist: (it.artists || []).map((a) => a.name).filter(Boolean).join(', ') || (it.subtitle || '').split(' • ')[0],
+  artists: it.artists || [], album: it.album || null, thumb: smallThumb(it.thumb), duration: it.duration || 0, durationText: it.durationText || '', subtitle: it.subtitle || '',
+});
+function createParty() {
+  party = new PartyServer({
+    searchSongs: async (q) => {
+      const r = await api.search({ query: q, params: SONGS_FILTER });
+      const seen = new Set();
+      return r.sections.flatMap((s) => s.items).filter((i) => i.videoId && !i.unavailable && !seen.has(i.videoId) && seen.add(i.videoId)).slice(0, 25).map(partySong);
+    },
+    suggest: async (q) => (await api.suggestions({ input: q })).queries,
+    lookup: async (videoId) => {
+      const n = await api.next({ videoId });
+      const it = n.items.find((x) => x.videoId === videoId);
+      return it ? partySong(it) : null;
+    },
+    onRequest: (req) => send('party:request', req),
+    onStatus: () => { partyStatus().then((s) => send('party:status', s)).catch(() => {}); },
+  });
+}
+async function partyStatus() {
+  const s = party.status();
+  const QR = require('qrcode');
+  s.urls = await Promise.all(s.urls.map(async (u) => ({ ...u, qr: await QR.toDataURL(u.url, { margin: 1, width: 360, color: { dark: '#111111', light: '#ffffff' } }) })));
+  s.settings = settings.party;
+  return s;
+}
+async function applyParty() {
+  const p = settings.party;
+  party.configure({ requireApproval: !!p.requireApproval, maxPerGuest: Number(p.maxPerGuest) || 0 });
+  if (p.enabled) {
+    await party.start({ port: Math.min(65535, Math.max(1024, Number(p.port) || 8338)), key: p.key });
+    if (party.key !== p.key) { settings.party = { ...p, key: party.key }; saveSettings(); }
+  } else {
+    await party.stop();
+  }
+  return partyStatus();
+}
+
 // ---------- IPC ----------
 function registerIpc() {
+  ipcMain.handle('party', async (_e, cmd, arg) => {
+    switch (cmd) {
+      case 'status': return partyStatus();
+      case 'set':
+        settings.party = { ...settings.party, ...arg };
+        saveSettings();
+        return applyParty();
+      case 'rotate':
+        settings.party = { ...settings.party, key: party.rotateKey() };
+        saveSettings();
+        return partyStatus();
+      case 'snapshot':
+        party.options.hostName = String(arg.hostName || '').slice(0, 40);
+        return party.setSnapshot({ nowPlaying: arg.nowPlaying, upNext: arg.upNext });
+      case 'resolve': return party.resolveRequest(arg.requestId, !!arg.approved);
+      default: return null;
+    }
+  });
   ipcMain.handle('api', async (_e, method, args) => {
     if (!Object.prototype.hasOwnProperty.call(api, method)) throw new Error('Unknown API method ' + method);
     try {
@@ -949,7 +1013,9 @@ app.whenReady().then(async () => {
   ses.setPermissionRequestHandler((_wc, perm, cb) => cb(['media', 'mediaKeySystem', 'fullscreen'].includes(perm)));
 
   presence = new Presence(() => settings.discord);
+  createParty();
   registerIpc();
+  if (settings.party && settings.party.enabled) applyParty().catch(() => {});
   createPlayerWindow();
   createMainWindow({ hidden: process.argv.includes('--hidden') });
   buildTray();
@@ -960,7 +1026,7 @@ app.whenReady().then(async () => {
   handleArgv(process.argv.slice(1));
 });
 
-app.on('before-quit', () => { quitting = true; if (presence) presence.shutdown(); });
+app.on('before-quit', () => { quitting = true; if (presence) presence.shutdown(); if (party) party.stop(); });
 app.on('window-all-closed', () => {
   if (!settings.closeToTray) app.quit();
 });
